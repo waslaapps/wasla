@@ -1,6 +1,8 @@
 package com.waslaapps.wasla.activities;
 
 import android.os.Bundle;
+import android.util.Log;
+import android.view.Gravity;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.GridLayout;
@@ -11,24 +13,33 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.android.flexbox.FlexboxLayout;
 import com.google.gson.Gson;
+import com.google.gson.reflect.TypeToken;
 import com.waslaapps.wasla.R;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.lang.reflect.Type;
 import java.util.*;
 
 public class GameActivity extends AppCompatActivity {
 
+   private static final String TAG = "GameActivity";
+
+   // UI Components
    private GridLayout gridLayout;
    private FlexboxLayout keyboardLayout;
-   private String[][] grid;
-   private TextView[][] gridViews;
-   private List<Position> positions;
+   private TextView[][] answerGrid;
 
-   private int currentInputIndex = 0;
-   private StringBuilder userInput = new StringBuilder();
-   private String correctAnswer = "";
+   // Current clue info
+   private int clueRow, clueCol, clueLength;
+   private String clueDirection;
+
+   // Level data
+   private Level currentLevel;
+
+   // Input tracking (right to left)
+   private int currentInputIndex;
 
    @Override
    protected void onCreate(Bundle savedInstanceState) {
@@ -38,85 +49,133 @@ public class GameActivity extends AppCompatActivity {
       gridLayout = findViewById(R.id.grid);
       keyboardLayout = findViewById(R.id.keyboard_layout);
 
+      // Get clue parameters from intent
       int levelIndex = getIntent().getIntExtra("levelIndex", 0);
-      positions = (List<Position>) getIntent().getSerializableExtra("positions");
+      clueRow = getIntent().getIntExtra("row", 0);
+      clueCol = getIntent().getIntExtra("col", 0);
+      clueDirection = getIntent().getStringExtra("direction");
+      clueLength = getIntent().getIntExtra("length", 0);
 
-      loadGrid(levelIndex);
-      setupGrid();
-      setupKeyboard();
+      Log.d(TAG, "onCreate: levelIndex=" + levelIndex + ", row=" + clueRow + ", col=" + clueCol
+              + ", direction=" + clueDirection + ", length=" + clueLength);
+
+      if (!"horizontal".equals(clueDirection) && !"vertical".equals(clueDirection)) {
+         Toast.makeText(this, "Invalid clue direction", Toast.LENGTH_LONG).show();
+         finish();
+         return;
+      }
+
+      // Initialize current input index for right-to-left input
+      currentInputIndex = clueLength - 1;
+
+      loadLevel(levelIndex);
    }
 
-   private void loadGrid(int levelIndex) {
+   // ========================
+   // Load level JSON and parse
+   // ========================
+   private void loadLevel(int levelIndex) {
       try {
          InputStream is = getAssets().open("levels.json");
          BufferedReader reader = new BufferedReader(new InputStreamReader(is));
          StringBuilder builder = new StringBuilder();
          String line;
-         while ((line = reader.readLine()) != null) builder.append(line);
-
+         while ((line = reader.readLine()) != null) {
+            builder.append(line);
+         }
          reader.close();
          is.close();
 
          Gson gson = new Gson();
-         Level[] levels = gson.fromJson(builder.toString(), Level[].class);
-         grid = levels[levelIndex].grid;
+         Type listType = new TypeToken<List<Level>>() {}.getType();
+         List<Level> levels = gson.fromJson(builder.toString(), listType);
 
-         StringBuilder answer = new StringBuilder();
-         for (Position pos : positions) {
-            answer.append(grid[pos.row][pos.col]);
+         currentLevel = levels.get(levelIndex);
+
+         // Check clue bounds before proceeding
+         int maxRows = currentLevel.grid.length;
+         int maxCols = currentLevel.grid[0].length;
+
+         if ("vertical".equals(clueDirection) && (clueRow + clueLength > maxRows)) {
+            Log.e(TAG, "Vertical clue out of bounds");
+            Toast.makeText(this, "Error: Clue out of grid bounds (vertical)", Toast.LENGTH_LONG).show();
+            finish();
+            return;
          }
-         correctAnswer = answer.toString();
+
+         if ("horizontal".equals(clueDirection) && (clueCol + clueLength > maxCols)) {
+            Log.e(TAG, "Horizontal clue out of bounds");
+            Toast.makeText(this, "Error: Clue out of grid bounds (horizontal)", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+         }
+
+         setupMiniGrid();
+         setupKeyboard();
 
       } catch (Exception e) {
-         e.printStackTrace();
-         Toast.makeText(this, "خطأ في تحميل المستوى", Toast.LENGTH_SHORT).show();
+         Log.e(TAG, "Error loading level", e);
+         Toast.makeText(this, "Error loading level", Toast.LENGTH_LONG).show();
          finish();
       }
    }
 
-   private void setupGrid() {
-      int size = grid.length;
-      gridLayout.setColumnCount(size);
-      gridViews = new TextView[size][size];
+   // ======================
+   // Setup mini grid (single word)
+   // ======================
+   private void setupMiniGrid() {
+      gridLayout.removeAllViews();
 
-      for (int i = 0; i < size; i++) {
-         for (int j = 0; j < size; j++) {
-            TextView cell = new TextView(this);
-            cell.setLayoutParams(new ViewGroup.LayoutParams(150, 150));
-            cell.setBackgroundResource(R.drawable.grid_cell_bg);
-            cell.setTextSize(20);
-            cell.setGravity(android.view.Gravity.CENTER);
-            gridViews[i][j] = cell;
-            gridLayout.addView(cell);
-         }
-      }
+      gridLayout.setColumnCount(clueLength);
+      answerGrid = new TextView[1][clueLength]; // single row grid
 
-      // Pre-fill answer positions with empty boxes
-      for (Position pos : positions) {
-         gridViews[pos.row][pos.col].setText("");
+      for (int i = 0; i < clueLength; i++) {
+         TextView cell = new TextView(this);
+         cell.setLayoutParams(new ViewGroup.LayoutParams(150, 150));
+         cell.setGravity(Gravity.CENTER);
+         cell.setTextSize(20);
+         cell.setBackgroundResource(R.drawable.grid_cell_bg);
+         cell.setText("");
+         answerGrid[0][i] = cell;
+         gridLayout.addView(cell);
       }
    }
 
+   // =================
+   // Setup keyboard buttons
+   // =================
    private void setupKeyboard() {
       keyboardLayout.removeAllViews();
-      List<String> letters = new ArrayList<>();
 
-      // Add all answer letters
-      for (char c : correctAnswer.toCharArray()) {
-         letters.add(String.valueOf(c));
+      Set<String> correctLetters = new LinkedHashSet<>();  // maintain insertion order
+
+      // Collect clue letters exactly once, in order from clue start to end
+      for (int i = 0; i < clueLength; i++) {
+         int row = clueRow + ("vertical".equals(clueDirection) ? i : 0);
+         int col = clueCol + ("horizontal".equals(clueDirection) ? i : 0);
+         String correct = currentLevel.grid[row][col];
+         if (!correct.isEmpty()) correctLetters.add(correct);
       }
 
-      // Fill up with random Arabic letters
-      List<String> allArabic = Arrays.asList("ا","ب","ت","ث","ج","ح","خ","د","ذ","ر","ز","س","ش","ص","ض","ط","ظ","ع","غ","ف","ق","ك","ل","م","ن","ه","و","ي");
-      Random random = new Random();
-      while (letters.size() < 12) {
-         String r = allArabic.get(random.nextInt(allArabic.size()));
-         if (!letters.contains(r)) letters.add(r);
+      List<String> keyboardLetters = new ArrayList<>(correctLetters);
+
+      List<String> allArabicLetters = Arrays.asList(
+              "ا", "ب", "ت", "ث", "ج", "ح", "خ", "د", "ذ", "ر",
+              "ز", "س", "ش", "ص", "ض", "ط", "ظ", "ع", "غ", "ف",
+              "ق", "ك", "ل", "م", "ن", "ه", "و", "ي"
+      );
+
+      Random rand = new Random();
+      while (keyboardLetters.size() < 12) {
+         String randomLetter = allArabicLetters.get(rand.nextInt(allArabicLetters.size()));
+         if (!keyboardLetters.contains(randomLetter)) {
+            keyboardLetters.add(randomLetter);
+         }
       }
 
-      Collections.shuffle(letters);
+      Collections.shuffle(keyboardLetters);
 
-      for (String letter : letters) {
+      for (String letter : keyboardLetters) {
          Button key = new Button(this);
          key.setText(letter);
          key.setOnClickListener(v -> handleInput(letter));
@@ -124,43 +183,72 @@ public class GameActivity extends AppCompatActivity {
       }
    }
 
+   // =====================
+   // Handle input (Right to Left)
+   // =====================
    private void handleInput(String letter) {
-      if (currentInputIndex >= positions.size()) return;
+      if (currentInputIndex < 0) return; // All letters filled
 
-      Position pos = positions.get(currentInputIndex);
-      gridViews[pos.row][pos.col].setText(letter);
-      userInput.append(letter);
-      currentInputIndex++;
+      TextView cell = answerGrid[0][currentInputIndex];
 
-      if (userInput.length() == correctAnswer.length()) {
-         if (userInput.toString().equals(correctAnswer)) {
-            Toast.makeText(this, "✔️ الإجابة صحيحة!", Toast.LENGTH_LONG).show();
-            // You can add level complete logic here
+      int row = clueRow + ("vertical".equals(clueDirection) ? (clueLength - 1 - currentInputIndex) : 0);
+      int col = clueCol + ("horizontal".equals(clueDirection) ? (clueLength - 1 - currentInputIndex) : 0);
+
+      String correctLetter = currentLevel.grid[row][col];
+
+      if (correctLetter.equals(letter)) {
+         cell.setText(letter);
+         currentInputIndex--;
+      } else {
+         Toast.makeText(this, "Wrong answer", Toast.LENGTH_SHORT).show();
+         return; // Do not advance index on wrong input
+      }
+
+      if (currentInputIndex < 0) {
+         // Check full answer when complete
+         StringBuilder userAnswer = new StringBuilder();
+         for (int i = clueLength - 1; i >= 0; i--) {
+            userAnswer.append(answerGrid[0][i].getText().toString());
+         }
+
+         if (userAnswer.toString().equals(getCorrectAnswer())) {
+            Toast.makeText(this, "✔️ Correct answer!", Toast.LENGTH_LONG).show();
+            // TODO: Add level complete logic here
          } else {
-            Toast.makeText(this, "❌ الإجابة غير صحيحة، حاول مرة أخرى", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "❌ Wrong answer, try again", Toast.LENGTH_SHORT).show();
             clearAnswer();
          }
       }
    }
 
+   // =================
+   // Get correct answer string from grid
+   // =================
+   private String getCorrectAnswer() {
+      StringBuilder answer = new StringBuilder();
+      for (int i = 0; i < clueLength; i++) {
+         int row = clueRow + ("vertical".equals(clueDirection) ? i : 0);
+         int col = clueCol + ("horizontal".equals(clueDirection) ? i : 0);
+         answer.append(currentLevel.grid[row][col]);
+      }
+      return answer.toString();
+   }
+
+   // =================
+   // Clear current answer inputs
+   // =================
    private void clearAnswer() {
-      for (Position pos : positions) {
-         gridViews[pos.row][pos.col].setText("");
+      for (int i = 0; i < clueLength; i++) {
+         answerGrid[0][i].setText("");
       }
-      userInput.setLength(0);
-      currentInputIndex = 0;
+      currentInputIndex = clueLength - 1;
    }
 
-   // Helper classes
+   // =================
+   // Model class for Level JSON
+   // =================
    public static class Level {
+      public int id;
       public String[][] grid;
-   }
-
-   public static class Position implements java.io.Serializable {
-      public int row, col;
-      public Position(int row, int col) {
-         this.row = row;
-         this.col = col;
-      }
    }
 }
