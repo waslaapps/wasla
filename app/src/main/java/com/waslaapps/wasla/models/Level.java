@@ -34,13 +34,13 @@ public class Level {
     }
 
     public static class Clue {
-        private int id;
+        public int id;
         public int row;
         public int col;
         public String direction; // "horizontal" or "vertical"
         public int length;
         private String answer;
-        private String clueText;
+        public String clueText;
 
         // Getters and setters
         public int getId() {

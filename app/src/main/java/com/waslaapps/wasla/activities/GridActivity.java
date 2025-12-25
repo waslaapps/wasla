@@ -31,7 +31,7 @@ public class GridActivity extends AppCompatActivity {
     private List<Level> levels;
     private Level currentLevel;
 
-    // Touch tracking
+    // Swipe tracking
     private float startX, startY;
     private int startRow = -1, startCol = -1;
 
@@ -43,7 +43,13 @@ public class GridActivity extends AppCompatActivity {
         gridLayout = findViewById(R.id.grid);
         gridLayout.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
-        int levelIndex = getIntent().getIntExtra("levelIndex", 0);
+        int levelIndex = getIntent().getIntExtra("levelIndex", -1);
+
+        if (levelIndex < 0) {
+            Toast.makeText(this, "Invalid level", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
 
         loadLevels();
         loadLevel(levelIndex);
@@ -68,7 +74,12 @@ public class GridActivity extends AppCompatActivity {
     }
 
     private void loadLevel(int index) {
-        if (levels == null || index < 0 || index >= levels.size()) return;
+        if (levels == null || index < 0 || index >= levels.size()) {
+            Toast.makeText(this, "Level not found", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
+
         currentLevel = levels.get(index);
         setupGrid();
     }
@@ -123,6 +134,7 @@ public class GridActivity extends AppCompatActivity {
     // Touch handling (SWIPE)
     // =====================
     private boolean handleTouch(MotionEvent event, int row, int col) {
+
         switch (event.getAction()) {
 
             case MotionEvent.ACTION_DOWN:
@@ -146,10 +158,12 @@ public class GridActivity extends AppCompatActivity {
     // Determine swipe direction
     // =====================
     private void handleSwipe(int row, int col, float dx, float dy) {
-        if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
 
-        String direction =
-                Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+        if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;
+
+        String direction = Math.abs(dx) > Math.abs(dy)
+                ? "horizontal"
+                : "vertical";
 
         Clue clue = findClue(row, col, direction);
 
@@ -166,8 +180,11 @@ public class GridActivity extends AppCompatActivity {
     // Find clue by direction
     // =====================
     private Clue findClue(int row, int col, String direction) {
+
+        if (currentLevel.clues == null) return null;
+
         for (Clue clue : currentLevel.clues) {
-            if (!clue.direction.equals(direction)) continue;
+            if (!direction.equals(clue.direction)) continue;
             if (coversCell(clue, row, col)) return clue;
         }
         return null;
@@ -200,6 +217,7 @@ public class GridActivity extends AppCompatActivity {
 
     private void clearHighlights() {
         if (gridViews == null) return;
+
         for (TextView[] row : gridViews) {
             for (TextView cell : row) {
                 if (cell != null) {
@@ -210,15 +228,12 @@ public class GridActivity extends AppCompatActivity {
     }
 
     // =====================
-    // Open GameActivity
+    // Open GameActivity (✅ CORRECT)
     // =====================
     private void openGame(Clue clue) {
         Intent intent = new Intent(this, GameActivity.class);
         intent.putExtra("levelIndex", levels.indexOf(currentLevel));
-        intent.putExtra("row", clue.row);
-        intent.putExtra("col", clue.col);
-        intent.putExtra("direction", clue.direction);
-        intent.putExtra("length", clue.length);
+        intent.putExtra("clueId", clue.id); // ✅ ONLY THIS
         startActivity(intent);
     }
 }
