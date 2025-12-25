@@ -3,7 +3,8 @@ package com.waslaapps.wasla.data;
 import android.content.Context;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.waslaapps.wasla.data.model.Level;
+import com.waslaapps.wasla.models.Level;
+
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.lang.reflect.Type;

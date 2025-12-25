@@ -15,6 +15,7 @@ import com.google.android.flexbox.FlexboxLayout;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.waslaapps.wasla.R;
+import com.waslaapps.wasla.models.Level;  // Import your Level model
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -26,19 +27,15 @@ public class GameActivity extends AppCompatActivity {
 
    private static final String TAG = "GameActivity";
 
-   // UI Components
    private GridLayout gridLayout;
    private FlexboxLayout keyboardLayout;
-   private TextView[][] answerGrid;
+   private TextView[] answerCells;
 
-   // Current clue info
    private int clueRow, clueCol, clueLength;
    private String clueDirection;
 
-   // Level data
    private Level currentLevel;
 
-   // Input tracking (right to left)
    private int currentInputIndex;
 
    @Override
@@ -46,10 +43,9 @@ public class GameActivity extends AppCompatActivity {
       super.onCreate(savedInstanceState);
       setContentView(R.layout.activity_game);
 
-      gridLayout = findViewById(R.id.grid);
+      gridLayout = findViewById(R.id.answer_grid);
       keyboardLayout = findViewById(R.id.keyboard_layout);
 
-      // Get clue parameters from intent
       int levelIndex = getIntent().getIntExtra("levelIndex", 0);
       clueRow = getIntent().getIntExtra("row", 0);
       clueCol = getIntent().getIntExtra("col", 0);
@@ -65,15 +61,11 @@ public class GameActivity extends AppCompatActivity {
          return;
       }
 
-      // Initialize current input index for right-to-left input
       currentInputIndex = clueLength - 1;
 
       loadLevel(levelIndex);
    }
 
-   // ========================
-   // Load level JSON and parse
-   // ========================
    private void loadLevel(int levelIndex) {
       try {
          InputStream is = getAssets().open("levels.json");
@@ -92,9 +84,8 @@ public class GameActivity extends AppCompatActivity {
 
          currentLevel = levels.get(levelIndex);
 
-         // Check clue bounds before proceeding
-         int maxRows = currentLevel.grid.length;
-         int maxCols = currentLevel.grid[0].length;
+         int maxRows = currentLevel.getGrid().size();
+         int maxCols = currentLevel.getGrid().get(0).size();
 
          if ("vertical".equals(clueDirection) && (clueRow + clueLength > maxRows)) {
             Log.e(TAG, "Vertical clue out of bounds");
@@ -120,14 +111,11 @@ public class GameActivity extends AppCompatActivity {
       }
    }
 
-   // ======================
-   // Setup mini grid (single word)
-   // ======================
    private void setupMiniGrid() {
       gridLayout.removeAllViews();
 
       gridLayout.setColumnCount(clueLength);
-      answerGrid = new TextView[1][clueLength]; // single row grid
+      answerCells = new TextView[clueLength];
 
       for (int i = 0; i < clueLength; i++) {
          TextView cell = new TextView(this);
@@ -136,25 +124,21 @@ public class GameActivity extends AppCompatActivity {
          cell.setTextSize(20);
          cell.setBackgroundResource(R.drawable.grid_cell_bg);
          cell.setText("");
-         answerGrid[0][i] = cell;
+         answerCells[i] = cell;
          gridLayout.addView(cell);
       }
    }
 
-   // =================
-   // Setup keyboard buttons
-   // =================
    private void setupKeyboard() {
       keyboardLayout.removeAllViews();
 
-      Set<String> correctLetters = new LinkedHashSet<>();  // maintain insertion order
+      Set<String> correctLetters = new LinkedHashSet<>();
 
-      // Collect clue letters exactly once, in order from clue start to end
       for (int i = 0; i < clueLength; i++) {
          int row = clueRow + ("vertical".equals(clueDirection) ? i : 0);
          int col = clueCol + ("horizontal".equals(clueDirection) ? i : 0);
-         String correct = currentLevel.grid[row][col];
-         if (!correct.isEmpty()) correctLetters.add(correct);
+         String letter = currentLevel.getGrid().get(row).get(col);
+         if (!letter.isEmpty()) correctLetters.add(letter);
       }
 
       List<String> keyboardLetters = new ArrayList<>(correctLetters);
@@ -183,37 +167,33 @@ public class GameActivity extends AppCompatActivity {
       }
    }
 
-   // =====================
-   // Handle input (Right to Left)
-   // =====================
    private void handleInput(String letter) {
-      if (currentInputIndex < 0) return; // All letters filled
+      if (currentInputIndex < 0) return;
 
-      TextView cell = answerGrid[0][currentInputIndex];
+      TextView cell = answerCells[currentInputIndex];
 
       int row = clueRow + ("vertical".equals(clueDirection) ? (clueLength - 1 - currentInputIndex) : 0);
       int col = clueCol + ("horizontal".equals(clueDirection) ? (clueLength - 1 - currentInputIndex) : 0);
 
-      String correctLetter = currentLevel.grid[row][col];
+      String correctLetter = currentLevel.getGrid().get(row).get(col);
 
       if (correctLetter.equals(letter)) {
          cell.setText(letter);
          currentInputIndex--;
       } else {
          Toast.makeText(this, "Wrong answer", Toast.LENGTH_SHORT).show();
-         return; // Do not advance index on wrong input
+         return;
       }
 
       if (currentInputIndex < 0) {
-         // Check full answer when complete
          StringBuilder userAnswer = new StringBuilder();
          for (int i = clueLength - 1; i >= 0; i--) {
-            userAnswer.append(answerGrid[0][i].getText().toString());
+            userAnswer.append(answerCells[i].getText().toString());
          }
 
          if (userAnswer.toString().equals(getCorrectAnswer())) {
             Toast.makeText(this, "✔️ Correct answer!", Toast.LENGTH_LONG).show();
-            // TODO: Add level complete logic here
+            // TODO: handle success (e.g., finish activity or next clue)
          } else {
             Toast.makeText(this, "❌ Wrong answer, try again", Toast.LENGTH_SHORT).show();
             clearAnswer();
@@ -221,34 +201,20 @@ public class GameActivity extends AppCompatActivity {
       }
    }
 
-   // =================
-   // Get correct answer string from grid
-   // =================
    private String getCorrectAnswer() {
       StringBuilder answer = new StringBuilder();
       for (int i = 0; i < clueLength; i++) {
          int row = clueRow + ("vertical".equals(clueDirection) ? i : 0);
          int col = clueCol + ("horizontal".equals(clueDirection) ? i : 0);
-         answer.append(currentLevel.grid[row][col]);
+         answer.append(currentLevel.getGrid().get(row).get(col));
       }
       return answer.toString();
    }
 
-   // =================
-   // Clear current answer inputs
-   // =================
    private void clearAnswer() {
       for (int i = 0; i < clueLength; i++) {
-         answerGrid[0][i].setText("");
+         answerCells[i].setText("");
       }
       currentInputIndex = clueLength - 1;
-   }
-
-   // =================
-   // Model class for Level JSON
-   // =================
-   public static class Level {
-      public int id;
-      public String[][] grid;
    }
 }

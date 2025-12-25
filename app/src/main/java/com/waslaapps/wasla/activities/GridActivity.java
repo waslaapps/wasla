@@ -3,6 +3,7 @@ package com.waslaapps.wasla.activities;
 import android.content.Intent;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.GridLayout;
@@ -14,28 +15,25 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.waslaapps.wasla.R;
+import com.waslaapps.wasla.models.Level;
+import com.waslaapps.wasla.models.Level.Clue;
 
 import java.io.BufferedReader;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
 import java.util.List;
-import java.util.ArrayList;
 
 public class GridActivity extends AppCompatActivity {
 
     private GridLayout gridLayout;
-    private List<Level> levels;
-    private Level currentLevel;
     private TextView[][] gridViews;
 
-    private List<Clue> cluesAtSelectedCell = new ArrayList<>();
-    private int selectedClueIndex = -1;
-    private int lastTappedRow = -1;
-    private int lastTappedCol = -1;
+    private List<Level> levels;
+    private Level currentLevel;
 
-    // Track last selected clue index to detect confirm tap
-    private int lastConfirmedClueIndex = -1;
+    // Touch tracking
+    private float startX, startY;
+    private int startRow = -1, startCol = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,41 +43,44 @@ public class GridActivity extends AppCompatActivity {
         gridLayout = findViewById(R.id.grid);
         gridLayout.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
+        int levelIndex = getIntent().getIntExtra("levelIndex", 0);
+
         loadLevels();
-        loadLevel(0); // Load first level, or pass from Intent
+        loadLevel(levelIndex);
     }
 
+    // =====================
+    // Load all levels
+    // =====================
     private void loadLevels() {
-        try {
-            InputStream is = getAssets().open("levels.json");
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-            StringBuilder builder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                builder.append(line);
-            }
-            reader.close();
-            is.close();
+        try (BufferedReader reader =
+                     new BufferedReader(new InputStreamReader(getAssets().open("levels.json")))) {
 
             Gson gson = new Gson();
-            Type listType = new TypeToken<List<Level>>(){}.getType();
-            levels = gson.fromJson(builder.toString(), listType);
+            Type listType = new TypeToken<List<Level>>() {}.getType();
+            levels = gson.fromJson(reader, listType);
 
         } catch (Exception e) {
             e.printStackTrace();
-            Toast.makeText(this, "Failed to load levels", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Failed to load levels", Toast.LENGTH_LONG).show();
+            finish();
         }
     }
 
     private void loadLevel(int index) {
-        if (levels == null || levels.size() <= index) return;
+        if (levels == null || index < 0 || index >= levels.size()) return;
         currentLevel = levels.get(index);
         setupGrid();
     }
 
+    // =====================
+    // Build crossword grid
+    // =====================
     private void setupGrid() {
-        int rows = currentLevel.grid.length;
-        int cols = currentLevel.grid[0].length;
+        List<List<String>> grid = currentLevel.getGrid();
+
+        int rows = grid.size();
+        int cols = grid.get(0).size();
 
         gridLayout.removeAllViews();
         gridLayout.setRowCount(rows);
@@ -91,15 +92,26 @@ public class GridActivity extends AppCompatActivity {
 
         for (int r = 0; r < rows; r++) {
             for (int c = 0; c < cols; c++) {
+
                 TextView cell = new TextView(this);
                 cell.setLayoutParams(new ViewGroup.LayoutParams(cellSize, cellSize));
                 cell.setGravity(Gravity.CENTER);
                 cell.setTextSize(22);
                 cell.setBackgroundResource(R.drawable.grid_cell_bg);
-                cell.setText(currentLevel.grid[r][c]);
+
+                String letter = grid.get(r).get(c);
+
+                if (letter == null || letter.isEmpty()) {
+                    cell.setVisibility(View.INVISIBLE);
+                } else {
+                    cell.setText(letter);
+                    cell.setVisibility(View.VISIBLE);
+                }
+
                 final int row = r;
                 final int col = c;
-                cell.setOnClickListener(v -> onCellClick(row, col));
+
+                cell.setOnTouchListener((v, event) -> handleTouch(event, row, col));
 
                 gridLayout.addView(cell);
                 gridViews[r][c] = cell;
@@ -107,65 +119,82 @@ public class GridActivity extends AppCompatActivity {
         }
     }
 
-    private void onCellClick(int row, int col) {
-        // If tapped a different cell than last time, reset clues list & index
-        if (row != lastTappedRow || col != lastTappedCol) {
-            cluesAtSelectedCell.clear();
-            selectedClueIndex = -1;
-            lastConfirmedClueIndex = -1;
+    // =====================
+    // Touch handling (SWIPE)
+    // =====================
+    private boolean handleTouch(MotionEvent event, int row, int col) {
+        switch (event.getAction()) {
 
-            // Find all clues covering this cell
-            for (Clue clue : currentLevel.clues) {
-                if (doesClueCoverCell(clue, row, col)) {
-                    cluesAtSelectedCell.add(clue);
-                }
-            }
-            lastTappedRow = row;
-            lastTappedCol = col;
-        }
+            case MotionEvent.ACTION_DOWN:
+                startX = event.getX();
+                startY = event.getY();
+                startRow = row;
+                startCol = col;
+                clearHighlights();
+                return true;
 
-        if (cluesAtSelectedCell.isEmpty()) {
-            Toast.makeText(this, "لا توجد أدلة هنا", Toast.LENGTH_SHORT).show(); // No clues here
-            clearHighlights();
-            return;
-        }
-
-        // Cycle to next clue in the list
-        selectedClueIndex = (selectedClueIndex + 1) % cluesAtSelectedCell.size();
-        Clue clue = cluesAtSelectedCell.get(selectedClueIndex);
-
-        highlightClue(clue);
-
-        // If user taps same clue twice, open GameActivity
-        if (lastConfirmedClueIndex == selectedClueIndex) {
-            openGameForSelectedClue(clue);
-        }
-        lastConfirmedClueIndex = selectedClueIndex;
-    }
-
-    private boolean doesClueCoverCell(Clue clue, int row, int col) {
-        if ("horizontal".equals(clue.direction)) {
-            return (row == clue.row) && (col >= clue.col) && (col < clue.col + clue.length);
-        } else if ("vertical".equals(clue.direction)) {
-            return (col == clue.col) && (row >= clue.row) && (row < clue.row + clue.length);
+            case MotionEvent.ACTION_UP:
+                float dx = event.getX() - startX;
+                float dy = event.getY() - startY;
+                handleSwipe(startRow, startCol, dx, dy);
+                return true;
         }
         return false;
     }
 
+    // =====================
+    // Determine swipe direction
+    // =====================
+    private void handleSwipe(int row, int col, float dx, float dy) {
+        if (Math.abs(dx) < 20 && Math.abs(dy) < 20) return;
+
+        String direction =
+                Math.abs(dx) > Math.abs(dy) ? "horizontal" : "vertical";
+
+        Clue clue = findClue(row, col, direction);
+
+        if (clue == null) {
+            Toast.makeText(this, "لا توجد كلمة هنا", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        highlightClue(clue);
+        openGame(clue);
+    }
+
+    // =====================
+    // Find clue by direction
+    // =====================
+    private Clue findClue(int row, int col, String direction) {
+        for (Clue clue : currentLevel.clues) {
+            if (!clue.direction.equals(direction)) continue;
+            if (coversCell(clue, row, col)) return clue;
+        }
+        return null;
+    }
+
+    private boolean coversCell(Clue clue, int row, int col) {
+        if ("horizontal".equals(clue.direction)) {
+            return row == clue.row &&
+                    col >= clue.col &&
+                    col < clue.col + clue.length;
+        } else {
+            return col == clue.col &&
+                    row >= clue.row &&
+                    row < clue.row + clue.length;
+        }
+    }
+
+    // =====================
+    // Highlight word
+    // =====================
     private void highlightClue(Clue clue) {
         clearHighlights();
 
-        int r = clue.row;
-        int c = clue.col;
-
-        if ("horizontal".equals(clue.direction)) {
-            for (int i = 0; i < clue.length; i++) {
-                animateCellHighlight(r, c + i);
-            }
-        } else {
-            for (int i = 0; i < clue.length; i++) {
-                animateCellHighlight(r + i, c);
-            }
+        for (int i = 0; i < clue.length; i++) {
+            int r = clue.row + ("vertical".equals(clue.direction) ? i : 0);
+            int c = clue.col + ("horizontal".equals(clue.direction) ? i : 0);
+            gridViews[r][c].setBackgroundResource(R.drawable.grid_cell_highlight_bg);
         }
     }
 
@@ -180,14 +209,10 @@ public class GridActivity extends AppCompatActivity {
         }
     }
 
-    private void animateCellHighlight(int row, int col) {
-        if (row < 0 || col < 0 || row >= gridViews.length || col >= gridViews[0].length) return;
-        TextView cell = gridViews[row][col];
-        if (cell == null) return;
-        cell.setBackgroundResource(R.drawable.grid_cell_highlight_bg);
-    }
-
-    private void openGameForSelectedClue(Clue clue) {
+    // =====================
+    // Open GameActivity
+    // =====================
+    private void openGame(Clue clue) {
         Intent intent = new Intent(this, GameActivity.class);
         intent.putExtra("levelIndex", levels.indexOf(currentLevel));
         intent.putExtra("row", clue.row);
@@ -195,22 +220,5 @@ public class GridActivity extends AppCompatActivity {
         intent.putExtra("direction", clue.direction);
         intent.putExtra("length", clue.length);
         startActivity(intent);
-    }
-
-    // Model classes
-    public static class Level {
-        public int id;
-        public String[][] grid;
-        public List<Clue> clues;
-    }
-
-    public static class Clue {
-        public int id;
-        public int row;
-        public int col;
-        public String direction;
-        public int length;
-        public String answer;
-        public String clueText;
     }
 }

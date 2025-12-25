@@ -1,48 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:orientation="vertical"
+    android:padding="16dp"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    xmlns:tools="http://schemas.android.com/tools"
-    android:fillViewport="true">
+    android:layout_height="match_parent">
 
-    <LinearLayout
+    <TextView
+        android:id="@+id/question_text"
+        android:textSize="20sp"
+        android:textColor="#000"
+        android:gravity="center"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="16dp"
-        android:gravity="center_horizontal">
+        android:padding="12dp"/>
 
-        <!-- Level title / hint -->
-        <TextView
-            android:id="@+id/levelTitle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="السؤال"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="16dp" />
+    <GridLayout
+        android:id="@+id/answer_grid"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:layout_marginVertical="16dp"/>
 
-        <!-- Crossword grid -->
-        <GridLayout
-            android:id="@+id/grid"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:columnCount="5"
-            android:rowCount="5"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Keyboard area -->
-        <com.google.android.flexbox.FlexboxLayout
-            android:id="@+id/keyboard_layout"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layoutDirection="rtl"
-            android:padding="8dp"
-            app:flexWrap="wrap"
-            app:justifyContent="center"
-            app:alignItems="center"
-            tools:ignore="MissingClass" />
-
-    </LinearLayout>
-</ScrollView>
+    <com.google.android.flexbox.FlexboxLayout
+        android:id="@+id/keyboard_layout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"/>
+</LinearLayout>

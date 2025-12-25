@@ -6,9 +6,11 @@
     android:gravity="center"
     android:padding="16dp">
 
-    <Button
-        android:id="@+id/level1_button"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Level 1" />
+    <androidx.recyclerview.widget.RecyclerView
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        android:id="@+id/levelRecyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"/>
+
+
 </LinearLayout>
