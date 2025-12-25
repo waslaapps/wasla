@@ -111,7 +111,7 @@ public class GameActivity extends AppCompatActivity {
 
       for (int i = 0; i < currentClue.length; i++) {
          TextView cell = new TextView(this);
-         cell.setLayoutParams(new ViewGroup.LayoutParams(150, 150));
+         cell.setLayoutParams(new ViewGroup.LayoutParams(50, 50));
          cell.setGravity(Gravity.CENTER);
          cell.setTextSize(20);
          cell.setBackgroundResource(R.drawable.grid_cell_bg);
