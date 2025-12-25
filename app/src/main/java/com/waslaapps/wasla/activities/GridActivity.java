@@ -1,33 +1,39 @@
 package com.waslaapps.wasla.activities;
 
 import android.content.Intent;
-import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.view.MotionEvent;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.GridLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
 import com.waslaapps.wasla.R;
+import com.waslaapps.wasla.models.Level;
+import com.waslaapps.wasla.models.Level.Clue;
 
 import java.io.BufferedReader;
-import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
-import java.util.ArrayList;
 import java.util.List;
 
 public class GridActivity extends AppCompatActivity {
 
     private GridLayout gridLayout;
-    private Level level;
     private TextView[][] gridViews;
-    private List<Position> highlightedPositions = new ArrayList<>();
-    private boolean selectionActive = false;
+
+    private List<Level> levels;
+    private Level currentLevel;
+
+    // Swipe tracking
+    private float startX, startY;
+    private int startRow = -1, startCol = -1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -35,178 +41,199 @@ public class GridActivity extends AppCompatActivity {
         setContentView(R.layout.activity_grid);
 
         gridLayout = findViewById(R.id.grid);
+        gridLayout.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
 
-        int levelIndex = getIntent().getIntExtra("levelIndex", 0);
+        int levelIndex = getIntent().getIntExtra("levelIndex", -1);
+
+        if (levelIndex < 0) {
+            Toast.makeText(this, "Invalid level", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
+
+        loadLevels();
         loadLevel(levelIndex);
     }
 
-    private void loadLevel(int index) {
-        try {
-            InputStream is = getAssets().open("levels.json");
-            BufferedReader reader = new BufferedReader(new InputStreamReader(is));
-            StringBuilder builder = new StringBuilder();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                builder.append(line);
-            }
-            reader.close();
-            is.close();
+    // =====================
+    // Load all levels
+    // =====================
+    private void loadLevels() {
+        try (BufferedReader reader =
+                     new BufferedReader(new InputStreamReader(getAssets().open("levels.json")))) {
 
             Gson gson = new Gson();
-            Type type = new TypeToken<List<Level>>() {}.getType();
-            List<Level> levels = gson.fromJson(builder.toString(), type);
-
-            level = levels.get(index);
-            setupGrid();
+            Type listType = new TypeToken<List<Level>>() {}.getType();
+            levels = gson.fromJson(reader, listType);
 
         } catch (Exception e) {
             e.printStackTrace();
+            Toast.makeText(this, "Failed to load levels", Toast.LENGTH_LONG).show();
+            finish();
         }
     }
 
-    private void setupGrid() {
-        int size = level.grid.length;
-        gridLayout.setColumnCount(size);
-        gridViews = new TextView[size][size];
-        gridLayout.removeAllViews();
+    private void loadLevel(int index) {
+        if (levels == null || index < 0 || index >= levels.size()) {
+            Toast.makeText(this, "Level not found", Toast.LENGTH_LONG).show();
+            finish();
+            return;
+        }
 
-        for (int i = 0; i < size; i++) {
-            for (int j = 0; j < size; j++) {
-                String letter = level.grid[i][j];
+        currentLevel = levels.get(index);
+        setupGrid();
+    }
+
+    // =====================
+    // Build crossword grid
+    // =====================
+    private void setupGrid() {
+        List<List<String>> grid = currentLevel.getGrid();
+
+        int rows = grid.size();
+        int cols = grid.get(0).size();
+
+        gridLayout.removeAllViews();
+        gridLayout.setRowCount(rows);
+        gridLayout.setColumnCount(cols);
+
+        gridViews = new TextView[rows][cols];
+
+        int cellSize = getResources().getDisplayMetrics().widthPixels / cols;
+
+        for (int r = 0; r < rows; r++) {
+            for (int c = 0; c < cols; c++) {
 
                 TextView cell = new TextView(this);
-                cell.setLayoutParams(new ViewGroup.LayoutParams(140, 140));
+                cell.setLayoutParams(new ViewGroup.LayoutParams(cellSize, cellSize));
                 cell.setGravity(Gravity.CENTER);
-                cell.setTextSize(20);
-                cell.setText(letter.isEmpty() ? "" : letter);
+                cell.setTextSize(22);
                 cell.setBackgroundResource(R.drawable.grid_cell_bg);
 
-                int row = i, col = j;
-                cell.setOnClickListener(v -> onCellClick(row, col));
+                String letter = grid.get(r).get(c);
+
+                if (letter == null || letter.isEmpty()) {
+                    cell.setVisibility(View.INVISIBLE);
+                } else {
+                    cell.setText(letter);
+                    cell.setVisibility(View.VISIBLE);
+                }
+
+                final int row = r;
+                final int col = c;
+
+                cell.setOnTouchListener((v, event) -> handleTouch(event, row, col));
 
                 gridLayout.addView(cell);
-                gridViews[i][j] = cell;
+                gridViews[r][c] = cell;
             }
         }
     }
 
-    private void onCellClick(int row, int col) {
-        String letter = level.grid[row][col];
-        if (letter.isEmpty()) return;
+    // =====================
+    // Touch handling (SWIPE)
+    // =====================
+    private boolean handleTouch(MotionEvent event, int row, int col) {
 
-        if (!selectionActive) {
-            clearHighlights();
-            if (!highlightWord(row, col)) return;
-            selectionActive = true;
+        switch (event.getAction()) {
+
+            case MotionEvent.ACTION_DOWN:
+                startX = event.getX();
+                startY = event.getY();
+                startRow = row;
+                startCol = col;
+                clearHighlights();
+                return true;
+
+            case MotionEvent.ACTION_UP:
+                float dx = event.getX() - startX;
+                float dy = event.getY() - startY;
+                handleSwipe(startRow, startCol, dx, dy);
+                return true;
+        }
+        return false;
+    }
+
+    // =====================
+    // Determine swipe direction
+    // =====================
+    private void handleSwipe(int row, int col, float dx, float dy) {
+
+        if (Math.abs(dx) < 30 && Math.abs(dy) < 30) return;
+
+        String direction = Math.abs(dx) > Math.abs(dy)
+                ? "horizontal"
+                : "vertical";
+
+        Clue clue = findClue(row, col, direction);
+
+        if (clue == null) {
+            Toast.makeText(this, "لا توجد كلمة هنا", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        highlightClue(clue);
+        openGame(clue);
+    }
+
+    // =====================
+    // Find clue by direction
+    // =====================
+    private Clue findClue(int row, int col, String direction) {
+
+        if (currentLevel.clues == null) return null;
+
+        for (Clue clue : currentLevel.clues) {
+            if (!direction.equals(clue.direction)) continue;
+            if (coversCell(clue, row, col)) return clue;
+        }
+        return null;
+    }
+
+    private boolean coversCell(Clue clue, int row, int col) {
+        if ("horizontal".equals(clue.direction)) {
+            return row == clue.row &&
+                    col >= clue.col &&
+                    col < clue.col + clue.length;
         } else {
-            // Second click on highlighted word -> move to GameActivity
-            for (Position pos : highlightedPositions) {
-                if (pos.row == row && pos.col == col) {
-                    launchGameActivity(pos.row, pos.col, pos.direction, pos.length);
-                    break;
+            return col == clue.col &&
+                    row >= clue.row &&
+                    row < clue.row + clue.length;
+        }
+    }
+
+    // =====================
+    // Highlight word
+    // =====================
+    private void highlightClue(Clue clue) {
+        clearHighlights();
+
+        for (int i = 0; i < clue.length; i++) {
+            int r = clue.row + ("vertical".equals(clue.direction) ? i : 0);
+            int c = clue.col + ("horizontal".equals(clue.direction) ? i : 0);
+            gridViews[r][c].setBackgroundResource(R.drawable.grid_cell_highlight_bg);
+        }
+    }
+
+    private void clearHighlights() {
+        if (gridViews == null) return;
+
+        for (TextView[] row : gridViews) {
+            for (TextView cell : row) {
+                if (cell != null) {
+                    cell.setBackgroundResource(R.drawable.grid_cell_bg);
                 }
             }
         }
     }
 
-    private boolean highlightWord(int row, int col) {
-        String[][] grid = level.grid;
-
-        // Try horizontal first
-        int start = col;
-        while (start > 0 && !grid[row][start - 1].isEmpty()) start--;
-
-        int end = col;
-        while (end < grid.length - 1 && !grid[row][end + 1].isEmpty()) end++;
-
-        if (end > start) {
-            highlightedPositions.clear();
-            for (int c = start; c <= end; c++) {
-                final TextView cell = gridViews[row][c];
-                int delay = (c - start) * 80;
-
-                cell.animate()
-                        .alpha(0f)
-                        .setStartDelay(delay)
-                        .setDuration(150)
-                        .withEndAction(() -> {
-                            cell.setBackgroundColor(Color.GREEN);
-                            cell.setTextColor(Color.TRANSPARENT);
-                            cell.setAlpha(1f);
-                        })
-                        .start();
-
-                highlightedPositions.add(new Position(row, c, "H", end - start + 1));
-            }
-            return true;
-        }
-
-        // Try vertical
-        start = row;
-        while (start > 0 && !grid[start - 1][col].isEmpty()) start--;
-
-        end = row;
-        while (end < grid.length - 1 && !grid[end + 1][col].isEmpty()) end++;
-
-        if (end > start) {
-            highlightedPositions.clear();
-            for (int r = start; r <= end; r++) {
-                final TextView cell = gridViews[r][col];
-                int delay = (r - start) * 80;
-
-                cell.animate()
-                        .alpha(0f)
-                        .setStartDelay(delay)
-                        .setDuration(150)
-                        .withEndAction(() -> {
-                            cell.setBackgroundColor(Color.GREEN);
-                            cell.setTextColor(Color.TRANSPARENT);
-                            cell.setAlpha(1f);
-                        })
-                        .start();
-
-                highlightedPositions.add(new Position(r, col, "V", end - start + 1));
-            }
-            return true;
-        }
-
-        return false;
-    }
-
-    private void clearHighlights() {
-        for (Position pos : highlightedPositions) {
-            TextView cell = gridViews[pos.row][pos.col];
-            cell.setBackgroundResource(R.drawable.grid_cell_bg);
-            cell.setTextColor(Color.BLACK);
-        }
-        highlightedPositions.clear();
-        selectionActive = false;
-    }
-
-    private void launchGameActivity(int row, int col, String direction, int length) {
+    // =====================
+    // Open GameActivity (✅ CORRECT)
+    // =====================
+    private void openGame(Clue clue) {
         Intent intent = new Intent(this, GameActivity.class);
-        intent.putExtra("levelIndex", getIntent().getIntExtra("levelIndex", 0));
-        intent.putExtra("row", row);
-        intent.putExtra("col", col);
-        intent.putExtra("direction", direction);
-        intent.putExtra("length", length);
+        intent.putExtra("levelIndex", levels.indexOf(currentLevel));
+        intent.putExtra("clueId", clue.id); // ✅ ONLY THIS
         startActivity(intent);
-    }
-
-    static class Position {
-        int row, col, length;
-        String direction;
-
-        Position(int row, int col, String direction, int length) {
-            this.row = row;
-            this.col = col;
-            this.direction = direction;
-            this.length = length;
-        }
-    }
-
-    public static class Level {
-        public String name;
-        public String[][] grid;
     }
 }

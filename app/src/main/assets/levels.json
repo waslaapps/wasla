@@ -2,18 +2,128 @@
   {
     "id": 1,
     "grid": [
-      ["م", "غ", "ر", "ب", ""],
-      ["س", "", "", "", ""],
-      ["ج", "", "", "", ""],
-      ["د", "", "", "", ""],
-      ["", "", "", "", ""]
+      ["م", "غ", "ر", "ب", "ي", "", "", ""],
+      ["س", "", "", "", "ل", "", "", ""],
+      ["ج", "", "ب", "ي", "ل", "", "", ""],
+      ["د", "", "ا", "", "ب", "", "", ""],
+      ["", "", "ر", "", "ي", "ا", "س", "ة"],
+      ["", "", "ة", "", "", "", "", ""],
+      ["", "", "", "", "", "", "", ""],
+      ["", "", "", "", "", "", "", ""]
     ],
-    "answers": [
-      {"row": 0, "col": 0, "letter": "م"},
-      {"row": 0, "col": 1, "letter": "غ"},
-      {"row": 0, "col": 2, "letter": "ر"},
-      {"row": 0, "col": 3, "letter": "ب"}
+    "clues": [
+      {
+        "id": 1,
+        "row": 0,
+        "col": 0,
+        "direction": "horizontal",
+        "length": 5,
+        "answer": "مغربي",
+        "clueText": "بلد في شمال أفريقيا"
+      },
+      {
+        "id": 2,
+        "row": 0,
+        "col": 0,
+        "direction": "vertical",
+        "length": 4,
+        "answer": "مسجد",
+        "clueText": "مكان للعبادة"
+      },
+      {
+        "id": 3,
+        "row": 2,
+        "col": 2,
+        "direction": "horizontal",
+        "length": 4,
+        "answer": "بيلي",
+        "clueText": "اسم مكان"
+      },
+      {
+        "id": 4,
+        "row": 1,
+        "col": 4,
+        "direction": "vertical",
+        "length": 4,
+        "answer": "لباس",
+        "clueText": "شيء نلبسه"
+      },
+      {
+        "id": 5,
+        "row": 4,
+        "col": 4,
+        "direction": "horizontal",
+        "length": 5,
+        "answer": "رياسة",
+        "clueText": "منصب قيادي"
+      },
+      {
+        "id": 6,
+        "row": 2,
+        "col": 0,
+        "direction": "vertical",
+        "length": 3,
+        "answer": "جد",
+        "clueText": "شخص عظيم"
+      },
+      {
+        "id": 7,
+        "row": 4,
+        "col": 2,
+        "direction": "vertical",
+        "length": 3,
+        "answer": "ربة",
+        "clueText": "امرأة تدير البيت"
+      },
+      {
+        "id": 8,
+        "row": 0,
+        "col": 5,
+        "direction": "vertical",
+        "length": 3,
+        "answer": "يلى",
+        "clueText": "نهاية الليل"
+      }
+    ]
+  },
+
+  {
+    "id": 2,
+    "grid": [
+      ["ك", "ت", "ا", "ب", ""],
+      ["", "ل", "", "م", ""],
+      ["", "م", "", "د", ""],
+      ["", "س", "", "ر", ""],
+      ["", "", "", "س", ""]
     ],
-    "letters": ["م", "غ", "ر", "ب", "س", "ج", "د", "ن", "ا", "و", "ي", "ك"]
+    "clues": [
+      {
+        "id": 1,
+        "row": 0,
+        "col": 0,
+        "direction": "horizontal",
+        "length": 4,
+        "answer": "كتاب",
+        "clueText": "شيء نقرأه"
+      },
+      {
+        "id": 2,
+        "row": 0,
+        "col": 1,
+        "direction": "vertical",
+        "length": 4,
+        "answer": "تمرس",
+        "clueText": "ممارسة شيء بمهارة"
+      },
+      {
+        "id": 3,
+        "row": 1,
+        "col": 3,
+        "direction": "vertical",
+        "length": 4,
+        "answer": "مدرس",
+        "clueText": "شخص يعلّم"
+      }
+    ]
   }
 ]
